@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<body>
+<div id="stepGrid">
+    <canvas id="myCanvas"></canvas>
+    <div id="secRow">
+        <div id="prevButtonDiv"></div>
+        <div id="leftButtonDiv"></div>
+        <div id="fwdButtonDiv"></div>
+        <div id="backButtonDiv"></div>
+        <div id="rightButtonDiv"></div>
+    </div>
+</div>
+
+<style>
+    body { 
+        background-color: #000;
+    }
+    button {
+        background-color: #222;
+        color: #fff;
+        font-size: large;
+        padding: 4px;
+    }
+    #stepGrid {
+        display: grid;
+        grid-template-columns: auto auto auto;
+        grid-template-rows: auto auto auto;
+        gap: 0px;
+        width: fit-content;
+        margin: auto;
+    }
+
+    #secRow {
+        grid-column: 1;
+        grid-row: 2;
+        display: grid;
+    }
+
+    #fwdButtonDiv {
+        grid-column: 3;
+        grid-row: 2;
+        display: grid;
+        place-items: center;
+    }
+
+    #backButtonDiv {
+        grid-column: 4;
+        grid-row: 2;
+        display: grid;
+        place-items: center;
+    }
+
+    #prevButtonDiv {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    #leftButtonDiv {
+        grid-column: 2;
+        grid-row: 2;
+        display: grid;
+        place-items: center;
+    }
+
+    #rightButtonDiv {
+        grid-column: 5;
+        grid-row: 2;
+        display: grid;
+        justify-self: end;
+        align-items: center;
+    }
+
+    #myCanvas {
+        grid-column: 1;
+        grid-row: 1;
+        background: #222;
+    }
+</style>
+
+<script type="module">
+
+let picList = [{'Forward': 'default'}]
+let imger = ""
+let prefix = "./"
+let finalImage = ""
+let imhei = 533
+let prevctr = 0
+let prevarr = [9318]
+
+let thisNode = -1     // internal node index
+let failmessage = ""
+
+// canvas
+const canvas = document.getElementById("myCanvas")
+const ctx = canvas.getContext("2d")
+
+// read ?node= from URL
+const urlParams = new URLSearchParams(window.location.search)
+let revNode = Number(urlParams.get("node") || 0)
+
+// ------------------------------------------------------------
+// Load CSV
+// ------------------------------------------------------------
+function loadCSV(url, callback) {
+    fetch(url)
+        .then(res => res.text())
+        .then(text => {
+            text = text.replace("\r","")
+            const lines = text.trim().split("\n")
+            const headers = lines[0].split(",")
+            const rows = lines.slice(1).map(line => {
+                line = line.replace("\r","")
+                const values = line.split(",")
+                const obj = {}
+                headers.forEach((h, i) => obj[h] = values[i])
+                return obj
+            })
+
+            callback(rows)
+        })
+        .catch(err => console.error("CSV load error:", err))
+}
+
+// so we don't need Vite to run this, but if this does open under Vite, load the
+// csv's from public, not from dist
+// serving from port 8000 might be python http.server or app.py, and app.py acts funny
+// so each needs their own way, if botanicalstep.csv is not found
+let myPort = window.location.port
+
+if (Number(myPort) === 5173) {
+    loadCSV(`./botanicalstep.csv`, (data) => {
+        picList = data
+        prefix = "./"
+        initializeFromURL()
+    })
+} else {
+    let url = `./botanicalstep.csv`
+    fetch(url, { method: "HEAD"}).then(res => {
+        let retval = Number(res.status)
+        if (retval != 200) { throw new Error(`HTTP error status ${response.status}`)}
+        prefix = "./"
+        loadCSV(url, (data) => {
+            picList = data
+            initializeFromURL()
+        })
+        
+    }).catch(err => {
+        url = `./assets/botanicalstep.csv`
+        loadCSV(url, (data) => {
+            picList = data
+            prefix = "./assets"
+            initializeFromURL()
+        })}        
+    )
+}
+
+// ------------------------------------------------------------
+// Initialize based on URL node
+// ------------------------------------------------------------
+function initializeFromURL() {
+    const newnode = findNode(revNode)
+    if (newnode !== -1) {
+        thisNode = newnode
+        updateImage()
+    } else {
+        failmessage = "That is not a valid node"
+        console.error(failmessage)
+    }
+}
+
+// ------------------------------------------------------------
+// Update URL query param
+// ------------------------------------------------------------
+function setRevNode(nodeVal) {
+    const params = new URLSearchParams(window.location.search)
+    params.set("node", nodeVal)
+    history.replaceState({}, "", `${location.pathname}?${params}`)
+    revNode = nodeVal
+}
+
+// ------------------------------------------------------------
+// Find node index in picList
+// ------------------------------------------------------------
+function findNode(node) {
+    if (!node) return 0
+
+    for (let i = 0; i < picList.length; i++) {
+        if (Number(picList[i]["Node"]) === Number(node)) {
+            return i
+        }
+    }
+    console.error("could not find your node")
+    return -1
+}
+
+// ------------------------------------------------------------
+// Navigation functions
+// ------------------------------------------------------------
+function prevPush() {
+    prevctr = prevctr + 1
+    prevarr.push(thisNode)
+}
+
+function fwdVal() {
+    prevPush()
+    const newnode = findNode(picList[thisNode]["Forward"])
+    if (newnode !== -1) {
+        thisNode = newnode
+        updateImage()
+    }
+}
+
+function backVal() {
+    prevPush()
+    const newnode = findNode(picList[thisNode]["Back"])
+    if (newnode !== -1) {
+        thisNode = newnode
+        updateImage()
+    }
+}
+
+function leftVal() {
+    prevPush()
+    const newnode = findNode(picList[thisNode]["Left"])
+    if (newnode !== -1) {
+        thisNode = newnode
+        updateImage()
+    }
+}
+
+function rightVal() {
+    prevPush()
+    const newnode = findNode(picList[thisNode]["Right"])
+    if (newnode !== -1) {
+        thisNode = newnode
+        updateImage()
+    }
+}
+
+function prevVal() {
+    if (prevctr > 0) {
+        thisNode = prevarr[prevctr]
+        prevarr.pop()
+        prevctr = prevctr - 1
+        updateImage()
+    }
+}
+
+// ------------------------------------------------------------
+// Keyboard navigation
+// ------------------------------------------------------------
+window.addEventListener("keydown", (event) => {
+    if (!picList[thisNode]) return
+
+    if ((event.key === "w" || event.key === "W") && picList[thisNode]["Forward"]) fwdVal()
+    if ((event.key === "s" || event.key === "S") && picList[thisNode]["Back"]) backVal()
+    if ((event.key === "a" || event.key === "A") && picList[thisNode]["Left"]) leftVal()
+    if ((event.key === "d" || event.key === "D") && picList[thisNode]["Right"]) rightVal()
+    if ((event.key === "q" || event.key === "Q") && prevctr > 0) prevVal()
+})
+
+// ------------------------------------------------------------
+// Load and draw image
+// ------------------------------------------------------------
+function updateImage() {
+    if (!picList[thisNode] || !picList[thisNode]["Node"]) {
+        failmessage = "That is not a valid node"
+        console.error(failmessage)
+        return
+    }
+
+    const nodeVal = picList[thisNode]["Node"]
+    setRevNode(nodeVal)
+
+    imger = `${prefix}/Botanical_Garden_StepThrough/IMG_${nodeVal}.JPG`
+
+    const img = new Image()
+    img.crossOrigin = "anonymous"
+    img.src = imger
+
+    img.onload = () => {
+        let imwid = 800
+        if (img.height > img.width) {
+            imwid = imhei
+        }
+        const imheiCalc = Math.round(img.height * imwid / img.width)
+        imhei = imheiCalc
+
+        canvas.width = imwid
+        canvas.height = imheiCalc
+
+        ctx.drawImage(img, 0, 0, imwid, imheiCalc)
+
+        finalImage = canvas.toDataURL()
+        // add appropriate buttons
+        document.getElementById("prevButtonDiv").innerHTML = `<button id="prevButton">Previous</button>`
+        document.getElementById("prevButton").addEventListener("click", prevVal)        
+        if (picList[thisNode].Forward) {
+            document.getElementById("fwdButtonDiv").innerHTML = `<button id="fwdButton">Forward</button>`
+            document.getElementById("fwdButton").addEventListener("click", fwdVal)
+        } else {
+            document.getElementById("fwdButtonDiv").innerHTML = ``
+        }
+        if (picList[thisNode].Back) {
+            document.getElementById("backButtonDiv").innerHTML = `<button id="backButton">Back</button>`
+            document.getElementById("backButton").addEventListener("click", backVal)
+        } else {
+            document.getElementById("backButtonDiv").innerHTML = ``
+        }
+        if (picList[thisNode].Left) {
+            document.getElementById("leftButtonDiv").innerHTML = `<button id="leftButton">Left</button>`
+            document.getElementById("leftButton").addEventListener("click", leftVal)
+        } else {
+            document.getElementById("leftButtonDiv").innerHTML = ``
+        }
+        if (picList[thisNode].Right) {
+            document.getElementById("rightButtonDiv").innerHTML = `<button id="rightButton">Right</button>`
+            document.getElementById("rightButton").addEventListener("click", rightVal)
+        } else {
+            document.getElementById("rightButtonDiv").innerHTML = ``
+        }
+    }
+}
+</script>
+</body>
